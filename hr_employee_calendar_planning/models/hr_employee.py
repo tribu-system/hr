@@ -45,6 +45,16 @@ class HrEmployee(models.Model):
         copy=True,
     )
 
+    def _get_planning_calendars(self, from_date, to_date):
+        self.ensure_one()
+        # We need to use sudo to avoid the error  odoo.exceptions.AccessError:
+        # The fields “calendar_ids”, which you are trying to read, are not
+        # available for employee public profiles.
+        return self.sudo().calendar_ids.filtered(
+            lambda x: (not x.date_start or (from_date and x.date_start <= from_date))
+            and (not x.date_end or (to_date and x.date_end >= to_date))
+        )
+
     @api.model
     def default_get(self, fields):
         """Set calendar_ids default value to cover all use cases."""
@@ -60,11 +70,8 @@ class HrEmployee(models.Model):
     def _regenerate_calendar(self):
         self.ensure_one()
         vals_list = []
-        today = fields.Date.today()
-        active_planning = self.calendar_ids.filtered(
-            lambda c: (not c.date_start or c.date_start <= today)
-            and (not c.date_end or c.date_end >= today)
-        )
+        today = fields.Date.context_today(self)
+        active_planning = self._get_planning_calendars(today, today)
         if active_planning:
             planning_to_use = active_planning[:1]
         elif self.calendar_ids:
@@ -137,12 +144,21 @@ class HrEmployee(models.Model):
     ):
         # Override function that change the calendar depending on date
         if len(self) == 1 and self.calendar_ids:
-            from_dt_tz = fields.Datetime.context_timestamp(self, from_datetime)
+            # NOTE v19: hr.version._generate_work_entries_postprocess()
+            # (odoo/addons/hr_work_entry/models/hr_version.py) now calls
+            # this with an already tz-aware from_datetime (it does its own
+            # .astimezone(tz) on the same value right after) - passing that
+            # into fields.Datetime.context_timestamp() raised ValueError:
+            # Not naive datetime (tzinfo is already set), since that helper
+            # still expects a naive UTC value. Found live via a fresh
+            # install of hr_employee_calendar_planning (crashes as soon as
+            # an employee's calendar/leave triggers work entry generation).
+            if from_datetime.tzinfo is not None:
+                from_dt_tz = from_datetime.astimezone(self.env.tz)
+            else:
+                from_dt_tz = fields.Datetime.context_timestamp(self, from_datetime)
             check_date = from_dt_tz.date()
-            planned_line = self.calendar_ids.filtered(
-                lambda c: (not c.date_start or c.date_start <= check_date)
-                and (not c.date_end or c.date_end >= check_date)
-            )
+            planned_line = self._get_planning_calendars(check_date, check_date)
             if planned_line:
                 best_line = sorted(
                     planned_line,
@@ -163,11 +179,8 @@ class HrEmployee(models.Model):
     def copy_global_leaves(self):
         self.ensure_one()
         leave_ids = []
-        today = fields.Date.today()
-        active_planning = self.calendar_ids.filtered(
-            lambda c: (not c.date_start or c.date_start <= today)
-            and (not c.date_end or c.date_end >= today)
-        )
+        today = fields.Date.context_today(self)
+        active_planning = self._get_planning_calendars(today, today)
         if not active_planning and self.calendar_ids:
             active_planning = self.calendar_ids.sorted(
                 key=lambda r: r.date_end or r.date_start, reverse=True

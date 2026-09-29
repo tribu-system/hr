@@ -1,0 +1,39 @@
+<odoo>
+    <!-- NOTE v19: hr_contract.hr_contract_view_form and
+         hr_contract.hr_contract_history_view_form no longer exist
+         (hr_contract module removed, merged into hr.version - see
+         models/hr_version.py). resource_calendar_id is now edited
+         directly on hr.employee's own form (delegated from hr.version
+         via _inherits), and the "history" list view is hr.hr_version_list_view.
+         The old inherit hid only the <label> (there isn't a separate
+         <label for="resource_calendar_id"/> element to target in the
+         v19 form - the group auto-generates it from the field's own
+         string) plus a "resource_calendar_warning" div that no longer
+         exists either - hiding the field itself here is the closest
+         equivalent, and is more honest UX anyway (write() below makes
+         edits here a silent no-op whenever they'd conflict with the
+         employee's managed calendar). -->
+    <record id="hr_employee_view_form_calendar_planning" model="ir.ui.view">
+        <field name="name">hr.employee.form.inherit.contract.calendar.planning</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="hr.view_employee_form" />
+        <field name="arch" type="xml">
+            <separator name="schedule" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </separator>
+            <field name="resource_calendar_id" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </field>
+        </field>
+    </record>
+    <record id="hr_version_list_view_calendar_planning" model="ir.ui.view">
+        <field name="name">hr.version.list.inherit.contract.calendar.planning</field>
+        <field name="model">hr.version</field>
+        <field name="inherit_id" ref="hr.hr_version_list_view" />
+        <field name="arch" type="xml">
+            <field name="resource_calendar_id" position="attributes">
+                <attribute name="column_invisible">1</attribute>
+            </field>
+        </field>
+    </record>
+</odoo>
